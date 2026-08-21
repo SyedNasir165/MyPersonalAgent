@@ -182,6 +182,72 @@ def create_task_plan(user_input):
             ]
 
     # -----------------------------------------------------
+    # Known Phase 14.3 test case
+    #
+    # Calculate 8 + 9 and then write the result into
+    # calc_result.txt and then read calc_result.txt.
+    # -----------------------------------------------------
+
+    if (
+        re.search(
+            r"\bcalculate\b",
+            text,
+            re.I
+        )
+        and
+        re.search(
+            r"\bwrite\b",
+            text,
+            re.I
+        )
+        and
+        re.search(
+            r"\bread\b",
+            text,
+            re.I
+        )
+    ):
+
+        expression_match = re.search(
+            r"\bcalculate\s+(.+?)\s+and\s+(?:then\s+)?write\b",
+            text,
+            re.I
+        )
+
+        if not expression_match:
+
+            expression_match = re.search(
+                r"\bcalculate\s+(.+?)\s+then\s+write\b",
+                text,
+                re.I
+            )
+
+        filename_match = re.search(
+            r"\binto\s+(?:the\s+)?(?:file\s+)?"
+            r"([A-Za-z0-9_.-]+\.[A-Za-z0-9]+)",
+            text,
+            re.I
+        )
+
+        if expression_match and filename_match:
+
+            expression = expression_match.group(1).strip(
+                "\"'"
+            )
+
+            filename = filename_match.group(1)
+
+            return [
+
+                f"Calculate {expression}",
+
+                f"Write the result into {filename}",
+
+                f"Read {filename}"
+
+            ]
+
+    # -----------------------------------------------------
     # Generic planning using the AI
     # -----------------------------------------------------
 
@@ -1854,28 +1920,230 @@ def execute_task_plan(plan):
     Execute each step of a previously created task plan,
     in order, reusing the same tool dispatch logic as
     single-step requests.
+
+    Phase 14.3:
+    Results from earlier steps are made available to later
+    steps (see resolve_step_references).
+
+    Phase 14.4:
+    A step that fails does not stop the plan. The failure
+    is reported and execution continues with the remaining
+    steps.
+
+    Phase 14.5:
+    Once every step has run, a final summarized response is
+    given to the user.
     """
 
     print(
         "\n▶️ Executing task plan..."
     )
 
+    step_results = []
+    step_statuses = []
+
     for index, step in enumerate(
         plan,
         start=1
     ):
 
-        print(
-            f"\n➡️ Executing step {index}: {step}"
+        resolved_step = resolve_step_references(
+            step,
+            step_results
         )
 
-        execute_step(
-            step
+        print(
+            f"\n➡️ Executing step {index}: {resolved_step}"
         )
+
+        outcome = execute_step(
+            resolved_step
+        )
+
+        if outcome is None:
+
+            outcome = {
+                "success": True,
+                "result": None
+            }
+
+        step_results.append(
+            outcome.get("result")
+        )
+
+        step_statuses.append(
+            outcome.get("success", True)
+        )
+
+        if not outcome.get("success", True):
+
+            print(
+                f"\n⚠️ Step {index} did not complete "
+                f"successfully. Continuing with the "
+                f"remaining steps."
+            )
 
     print(
         "\n✅ Task plan execution complete."
     )
+
+    give_final_response(
+        plan,
+        step_results,
+        step_statuses
+    )
+
+    return step_results
+
+
+# =========================================================
+# PHASE 14.3 — PASS RESULTS BETWEEN STEPS
+# =========================================================
+
+def resolve_step_references(step_text, step_results):
+
+    """
+    Replace references such as "the result", "that result"
+    or "the result of step 2" inside a step's text with the
+    actual output produced by earlier steps.
+    """
+
+    if not step_results:
+
+        return step_text
+
+    last_result = None
+
+    for value in reversed(step_results):
+
+        if value is not None:
+
+            last_result = value
+
+            break
+
+    def replace_step_n(match):
+
+        n = int(match.group(1))
+
+        if (
+            1 <= n <= len(step_results)
+            and step_results[n - 1] is not None
+        ):
+
+            return str(step_results[n - 1])
+
+        return match.group(0)
+
+    resolved = re.sub(
+        r"\bthe result of step (\d+)\b",
+        replace_step_n,
+        step_text,
+        flags=re.I
+    )
+
+    resolved = re.sub(
+        r"\bstep (\d+)'s result\b",
+        replace_step_n,
+        resolved,
+        flags=re.I
+    )
+
+    if last_result is not None:
+
+        resolved = re.sub(
+            r"\b(the previous step's result|the previous "
+            r"result|that result|the result)\b",
+            str(last_result),
+            resolved,
+            flags=re.I
+        )
+
+    return resolved
+
+
+# =========================================================
+# PHASE 14.5 — FINAL AGENT RESPONSE
+# =========================================================
+
+def give_final_response(plan, step_results, step_statuses):
+
+    """
+    Summarize the executed task plan into one short, final
+    reply to the user, once every step has finished.
+    """
+
+    summary_lines = []
+
+    for index, (step, result, success) in enumerate(
+        zip(plan, step_results, step_statuses),
+        start=1
+    ):
+
+        status_icon = "✅" if success else "❌"
+
+        result_text = (
+            result
+            if result not in (None, "")
+            else "(no output)"
+        )
+
+        summary_lines.append(
+            f"{status_icon} Step {index}: {step} -> "
+            f"{result_text}"
+        )
+
+    summary = "\n".join(summary_lines)
+
+    print(
+        "\n🤖 Final response:"
+    )
+
+    try:
+
+        final_answer = ask_ai(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a personal AI agent. "
+                        "Summarize the completed task plan "
+                        "for the user in 2-3 short, friendly "
+                        "sentences, based only on the step "
+                        "results given. Do not invent "
+                        "information that isn't in the "
+                        "results."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Steps and their results:\n{summary}"
+                        f"\n\nWrite a short final response "
+                        f"to the user."
+                    )
+                }
+            ]
+        )
+
+        print(
+            final_answer
+        )
+
+    except Exception:
+
+        if all(step_statuses):
+
+            print(
+                "All steps completed successfully."
+            )
+
+        else:
+
+            print(
+                "Some steps completed successfully, "
+                "others did not. See the details above."
+            )
 
 
 # =========================================================
@@ -1913,7 +2181,11 @@ def execute_step(user_input):
                 "the calculation."
             )
 
-            return
+            return {
+                "success": False,
+                "result": "I couldn't understand the "
+                "calculation."
+            }
 
         try:
 
@@ -1926,12 +2198,22 @@ def execute_step(user_input):
                 result
             )
 
+            return {
+                "success": True,
+                "result": str(result)
+            }
+
         except Exception as error:
 
             print(
                 "\n❌ Calculator error:",
                 error
             )
+
+            return {
+                "success": False,
+                "result": f"Calculator error: {error}"
+            }
 
     # =====================================================
     # DATE & TIME
@@ -1945,6 +2227,11 @@ def execute_step(user_input):
             "\n🕐 Date & Time:",
             result
         )
+
+        return {
+            "success": True,
+            "result": result
+        }
 
     # =====================================================
     # WEB
@@ -1979,6 +2266,11 @@ Web results:
                 answer
             )
 
+            return {
+                "success": True,
+                "result": answer
+            }
+
         except Exception as error:
 
             print(
@@ -1991,6 +2283,11 @@ Web results:
                 "\n❌ AI processing error:",
                 error
             )
+
+            return {
+                "success": False,
+                "result": results
+            }
 
     # =====================================================
     # PYTHON
@@ -2024,12 +2321,29 @@ Web results:
 
                 print(result)
 
+                return {
+                    "success": True,
+                    "result": result
+                }
+
             except Exception as error:
 
                 print(
                     "\n❌ Python execution error:",
                     error
                 )
+
+                return {
+                    "success": False,
+                    "result": f"Python execution error: {error}"
+                }
+
+        else:
+
+            return {
+                "success": False,
+                "result": "No Python code entered."
+            }
 
     # =====================================================
     # MEMORY
@@ -2048,7 +2362,10 @@ Web results:
                 conversation_value
             )
 
-            return
+            return {
+                "success": True,
+                "result": conversation_value
+            }
 
         memory_command = remember_command(
             user_input
@@ -2070,6 +2387,11 @@ Web results:
                     result
                 )
 
+                return {
+                    "success": True,
+                    "result": result
+                }
+
             except Exception as error:
 
                 print(
@@ -2077,7 +2399,10 @@ Web results:
                     error
                 )
 
-            return
+                return {
+                    "success": False,
+                    "result": f"Memory error: {error}"
+                }
 
         key = recall_command(
             user_input
@@ -2098,6 +2423,11 @@ Web results:
                         f"{key} is {value}."
                     )
 
+                    return {
+                        "success": True,
+                        "result": value
+                    }
+
                 else:
 
                     print(
@@ -2105,12 +2435,34 @@ Web results:
                         f"'{key}' in my memory."
                     )
 
+                    return {
+                        "success": False,
+                        "result": f"I don't have '{key}' "
+                        f"in my memory."
+                    }
+
             except Exception as error:
 
                 print(
                     "\n❌ Memory error:",
                     error
                 )
+
+                return {
+                    "success": False,
+                    "result": f"Memory error: {error}"
+                }
+
+        print(
+            "\n❌ I couldn't understand "
+            "the memory request."
+        )
+
+        return {
+            "success": False,
+            "result": "I couldn't understand the memory "
+            "request."
+        }
 
     # =====================================================
     # FILE
@@ -2129,7 +2481,11 @@ Web results:
                 "the file request."
             )
 
-            return
+            return {
+                "success": False,
+                "result": "I couldn't understand the file "
+                "request."
+            }
 
         try:
 
@@ -2151,6 +2507,11 @@ Web results:
                     result
                 )
 
+                return {
+                    "success": True,
+                    "result": result
+                }
+
             elif action == "read":
 
                 result = read_file(
@@ -2162,6 +2523,11 @@ Web results:
                 )
 
                 print(result)
+
+                return {
+                    "success": True,
+                    "result": result
+                }
 
             elif action == "append":
 
@@ -2175,12 +2541,22 @@ Web results:
                     result
                 )
 
+                return {
+                    "success": True,
+                    "result": result
+                }
+
         except Exception as error:
 
             print(
                 "\n❌ File error:",
                 error
             )
+
+            return {
+                "success": False,
+                "result": f"File error: {error}"
+            }
 
     # =====================================================
     # NORMAL CHAT
@@ -2199,12 +2575,22 @@ Web results:
                 answer
             )
 
+            return {
+                "success": True,
+                "result": answer
+            }
+
         except Exception as error:
 
             print(
                 "\n❌ AI error:",
                 error
             )
+
+            return {
+                "success": False,
+                "result": f"AI error: {error}"
+            }
 
 
 # =========================================================
