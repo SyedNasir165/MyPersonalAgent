@@ -156,7 +156,7 @@ def create_task_plan(user_input):
         content_match = re.search(
             r"\bwrite\s+(.+?)\s+(?:into|in|to)\s+"
             r"(?:the\s+)?(?:file\s+)?"
-            r"[A-Za-z0-9_.-]+\.[A-Za-z0-9]+",
+            r"(?:it|[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)",
             text,
             re.I
         )
@@ -1806,7 +1806,7 @@ def parse_file_request(user_input):
 
     create_patterns = [
 
-        r"(?:can\s+you\s+)?create\s+(?:a\s+)?file"
+        r"(?:can\s+you\s+)?create\s+(?:a\s+|the\s+)?file"
         r"\s+(?:called\s+)?([^\s]+)",
 
         r"(?:can\s+you\s+)?create\s+([^\s]+)"
@@ -1844,28 +1844,45 @@ def parse_file_request(user_input):
 
 
 # =========================================================
-# PROCESS REQUEST
+# PHASE 14.2 — SEQUENTIAL EXECUTION
 # =========================================================
 
-def process_request(user_input):
+def execute_task_plan(plan):
 
-    # =====================================================
-    # PHASE 14.1 — TASK PLANNING
-    #
-    # Only complex/multi-step requests enter the planner.
-    # Existing single-tool requests continue exactly as
-    # before.
-    # =====================================================
+    """
+    Phase 14.2:
+    Execute each step of a previously created task plan,
+    in order, reusing the same tool dispatch logic as
+    single-step requests.
+    """
 
-    if is_multi_step_task(
-        user_input
+    print(
+        "\n▶️ Executing task plan..."
+    )
+
+    for index, step in enumerate(
+        plan,
+        start=1
     ):
 
-        show_task_plan(
-            user_input
+        print(
+            f"\n➡️ Executing step {index}: {step}"
         )
 
-        return
+        execute_step(
+            step
+        )
+
+    print(
+        "\n✅ Task plan execution complete."
+    )
+
+
+# =========================================================
+# EXECUTE A SINGLE STEP / REQUEST
+# =========================================================
+
+def execute_step(user_input):
 
     print(
         "\n🤖 Agent is deciding..."
@@ -2188,6 +2205,40 @@ Web results:
                 "\n❌ AI error:",
                 error
             )
+
+
+# =========================================================
+# PROCESS REQUEST
+# =========================================================
+
+def process_request(user_input):
+
+    # =====================================================
+    # PHASE 14.1 — TASK PLANNING
+    # PHASE 14.2 — SEQUENTIAL EXECUTION
+    #
+    # Only complex/multi-step requests enter the planner.
+    # Existing single-tool requests continue exactly as
+    # before, unchanged, via execute_step().
+    # =====================================================
+
+    if is_multi_step_task(
+        user_input
+    ):
+
+        plan = show_task_plan(
+            user_input
+        )
+
+        execute_task_plan(
+            plan
+        )
+
+        return
+
+    execute_step(
+        user_input
+    )
 
 
 # =========================================================
