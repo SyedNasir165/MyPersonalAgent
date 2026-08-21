@@ -6,7 +6,16 @@ tool routing, task planning, and execution live in agent.py
 and its supporting modules (file_tools.py, python_tool.py,
 memory.py). This file never re-implements any of that logic —
 it only calls agent.handle_message() and renders the result.
+
+It additionally manages multiple named chat conversations
+(sidebar history, like a typical chat app), persisted to
+chat_sessions.json so they survive an app restart.
 """
+
+import json
+import uuid
+from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 
@@ -22,6 +31,216 @@ st.set_page_config(
     page_icon="🤖",
     layout="centered"
 )
+
+
+# =========================================================
+# CHAT SESSION STORAGE
+# =========================================================
+
+SESSIONS_FILE = Path(__file__).parent / "chat_sessions.json"
+
+
+def load_sessions():
+
+    if not SESSIONS_FILE.exists():
+
+        return {}
+
+    try:
+
+        with SESSIONS_FILE.open("r", encoding="utf-8") as file:
+
+            return json.load(file)
+
+    except (json.JSONDecodeError, OSError):
+
+        return {}
+
+
+def save_sessions(sessions):
+
+    with SESSIONS_FILE.open("w", encoding="utf-8") as file:
+
+        json.dump(
+            sessions,
+            file,
+            indent=2,
+            ensure_ascii=False
+        )
+
+
+def make_session_title(text):
+
+    text = text.strip().replace("\n", " ")
+
+    if len(text) > 40:
+
+        text = text[:40].rstrip() + "..."
+
+    return text or "New chat"
+
+
+def response_to_text(response):
+
+    if not response:
+
+        return ""
+
+    if response.get("mode") == "plan":
+
+        return response.get("final_response") or ""
+
+    result = response.get("result")
+
+    if result is None:
+
+        return ""
+
+    return result if isinstance(result, str) else str(result)
+
+
+def rebuild_conversation_memory(messages):
+
+    """
+    Restores agent.py's short-term conversation memory so a
+    reopened chat can still answer follow-up questions with
+    the right context.
+    """
+
+    agent.conversation_history.clear()
+
+    for message in messages:
+
+        if message["role"] == "user":
+
+            agent.conversation_history.append(
+                {
+                    "role": "user",
+                    "content": message["content"]
+                }
+            )
+
+        elif message["role"] == "assistant":
+
+            text = response_to_text(message.get("response"))
+
+            if text:
+
+                agent.conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": text
+                    }
+                )
+
+
+def create_new_session(sessions):
+
+    session_id = uuid.uuid4().hex[:12]
+
+    now = datetime.now().isoformat()
+
+    sessions[session_id] = {
+        "title": "New chat",
+        "created": now,
+        "updated": now,
+        "messages": []
+    }
+
+    save_sessions(sessions)
+
+    return session_id
+
+
+def switch_to_session(session_id, sessions):
+
+    st.session_state.session_id = session_id
+
+    st.session_state.messages = sessions[session_id]["messages"]
+
+    rebuild_conversation_memory(
+        st.session_state.messages
+    )
+
+
+def delete_session(session_id, sessions):
+
+    """
+    Deletes a conversation. If the deleted conversation was
+    the active one, switches to the most recently updated
+    remaining conversation, or starts a fresh one if none
+    are left.
+    """
+
+    was_active = session_id == st.session_state.get("session_id")
+
+    sessions.pop(session_id, None)
+
+    save_sessions(sessions)
+
+    if was_active:
+
+        if sessions:
+
+            latest_session_id = max(
+                sessions,
+                key=lambda sid: sessions[sid].get("updated", "")
+            )
+
+            switch_to_session(
+                latest_session_id,
+                sessions
+            )
+
+        else:
+
+            new_session_id = create_new_session(sessions)
+
+            sessions.update(
+                load_sessions()
+            )
+
+            switch_to_session(
+                new_session_id,
+                sessions
+            )
+
+
+def persist_current_session(sessions):
+
+    session_id = st.session_state.session_id
+
+    session = sessions.setdefault(
+        session_id,
+        {
+            "title": "New chat",
+            "created": datetime.now().isoformat(),
+            "messages": []
+        }
+    )
+
+    session["messages"] = st.session_state.messages
+
+    session["updated"] = datetime.now().isoformat()
+
+    if session.get("title", "New chat") == "New chat":
+
+        first_user_message = next(
+            (
+                message["content"]
+                for message in st.session_state.messages
+                if message["role"] == "user"
+            ),
+            None
+        )
+
+        if first_user_message:
+
+            session["title"] = make_session_title(
+                first_user_message
+            )
+
+    save_sessions(sessions)
 
 
 # =========================================================
@@ -113,12 +332,35 @@ def render_response(response):
 
 
 # =========================================================
-# SESSION STATE
+# SESSION STATE INITIALIZATION
 # =========================================================
 
-if "messages" not in st.session_state:
+sessions = load_sessions()
 
-    st.session_state.messages = []
+if "session_id" not in st.session_state:
+
+    if sessions:
+
+        latest_session_id = max(
+            sessions,
+            key=lambda sid: sessions[sid].get("updated", "")
+        )
+
+        switch_to_session(
+            latest_session_id,
+            sessions
+        )
+
+    else:
+
+        new_session_id = create_new_session(sessions)
+
+        sessions = load_sessions()
+
+        switch_to_session(
+            new_session_id,
+            sessions
+        )
 
 
 # =========================================================
@@ -126,6 +368,74 @@ if "messages" not in st.session_state:
 # =========================================================
 
 with st.sidebar:
+
+    if st.button("➕ New chat", use_container_width=True):
+
+        new_session_id = create_new_session(sessions)
+
+        sessions = load_sessions()
+
+        switch_to_session(
+            new_session_id,
+            sessions
+        )
+
+        st.rerun()
+
+    st.markdown("**Conversations**")
+
+    sorted_sessions = sorted(
+        sessions.items(),
+        key=lambda item: item[1].get("updated", ""),
+        reverse=True
+    )
+
+    for session_id, session in sorted_sessions:
+
+        is_active = session_id == st.session_state.session_id
+
+        label = session.get("title") or "New chat"
+
+        icon = "🟢" if is_active else "💬"
+
+        row_col, delete_col = st.columns(
+            [0.82, 0.18]
+        )
+
+        with row_col:
+
+            if st.button(
+                f"{icon} {label}",
+                key=f"session_btn_{session_id}",
+                use_container_width=True
+            ):
+
+                if not is_active:
+
+                    switch_to_session(
+                        session_id,
+                        sessions
+                    )
+
+                    st.rerun()
+
+        with delete_col:
+
+            if st.button(
+                "🗑️",
+                key=f"session_delete_{session_id}",
+                use_container_width=True,
+                help="Delete this conversation"
+            ):
+
+                delete_session(
+                    session_id,
+                    sessions
+                )
+
+                st.rerun()
+
+    st.markdown("---")
 
     st.header("About")
 
@@ -155,11 +465,13 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if st.button("🗑️ Clear conversation", use_container_width=True):
+    if st.button("🗑️ Clear this chat", use_container_width=True):
 
         st.session_state.messages = []
 
         agent.conversation_history.clear()
+
+        persist_current_session(sessions)
 
         st.rerun()
 
@@ -239,3 +551,5 @@ if user_input:
             "response": response
         }
     )
+
+    persist_current_session(sessions)
