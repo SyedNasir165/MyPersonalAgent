@@ -1,6 +1,7 @@
 import ast
 import operator
 import re
+import sys
 from datetime import datetime
 
 import requests
@@ -10,6 +11,26 @@ import ollama
 from file_tools import write_file, read_file, append_file
 from python_tool import run_python
 from memory import remember, recall
+
+
+# =========================================================
+# ENSURE UTF-8 OUTPUT (emoji-safe on Windows consoles and
+# when run as a subprocess, e.g. under Streamlit)
+# =========================================================
+
+if hasattr(sys.stdout, "reconfigure"):
+
+    sys.stdout.reconfigure(
+        encoding="utf-8",
+        errors="replace"
+    )
+
+if hasattr(sys.stderr, "reconfigure"):
+
+    sys.stderr.reconfigure(
+        encoding="utf-8",
+        errors="replace"
+    )
 
 
 # =========================================================
@@ -2130,35 +2151,43 @@ def give_final_response(plan, step_results, step_statuses):
             final_answer
         )
 
+        return final_answer
+
     except Exception:
 
         if all(step_statuses):
 
-            print(
-                "All steps completed successfully."
-            )
+            fallback_answer = "All steps completed successfully."
 
         else:
 
-            print(
+            fallback_answer = (
                 "Some steps completed successfully, "
                 "others did not. See the details above."
             )
+
+        print(
+            fallback_answer
+        )
+
+        return fallback_answer
 
 
 # =========================================================
 # EXECUTE A SINGLE STEP / REQUEST
 # =========================================================
 
-def execute_step(user_input):
+def execute_step(user_input, tool=None):
 
     print(
         "\n🤖 Agent is deciding..."
     )
 
-    tool = decide_tool(
-        user_input
-    )
+    if tool is None:
+
+        tool = decide_tool(
+            user_input
+        )
 
     print(
         f"🔧 Selected tool: {tool}"
@@ -2628,47 +2657,158 @@ def process_request(user_input):
 
 
 # =========================================================
+# STRUCTURED ENTRY POINT (for non-console consumers,
+# e.g. the Streamlit UI in app.py)
+#
+# Reuses exactly the same planning/execution/tool-dispatch
+# functions as process_request(). Nothing here duplicates
+# that logic — it only returns structured data instead of
+# printing to the console, so a UI can render it cleanly.
+# =========================================================
+
+def handle_message(user_input):
+
+    if is_multi_step_task(
+        user_input
+    ):
+
+        plan = create_task_plan(
+            user_input
+        )
+
+        step_results = []
+        step_statuses = []
+        steps_detail = []
+
+        for step in plan:
+
+            resolved_step = resolve_step_references(
+                step,
+                step_results
+            )
+
+            step_tool = decide_tool(
+                resolved_step
+            )
+
+            outcome = execute_step(
+                resolved_step,
+                tool=step_tool
+            )
+
+            if outcome is None:
+
+                outcome = {
+                    "success": True,
+                    "result": None
+                }
+
+            step_results.append(
+                outcome.get("result")
+            )
+
+            step_statuses.append(
+                outcome.get("success", True)
+            )
+
+            steps_detail.append(
+                {
+                    "step": resolved_step,
+                    "tool": step_tool,
+                    "success": outcome.get(
+                        "success",
+                        True
+                    ),
+                    "result": outcome.get("result")
+                }
+            )
+
+        final_response = give_final_response(
+            plan,
+            step_results,
+            step_statuses
+        )
+
+        return {
+            "mode": "plan",
+            "plan": plan,
+            "steps": steps_detail,
+            "final_response": final_response
+        }
+
+    tool = decide_tool(
+        user_input
+    )
+
+    outcome = execute_step(
+        user_input,
+        tool=tool
+    )
+
+    if outcome is None:
+
+        outcome = {
+            "success": True,
+            "result": None
+        }
+
+    return {
+        "mode": "single",
+        "tool": tool,
+        "success": outcome.get("success", True),
+        "result": outcome.get("result")
+    }
+
+
+# =========================================================
 # CONTINUOUS AGENT LOOP
 # =========================================================
 
-print()
-print("=" * 55)
-print("🤖 My Personal Agent")
-print("=" * 55)
-print("Type 'exit' or 'quit' to stop.")
-print("=" * 55)
+def main():
 
-while True:
+    print()
+    print("=" * 55)
+    print("🤖 My Personal Agent")
+    print("=" * 55)
+    print("Type 'exit' or 'quit' to stop.")
+    print("=" * 55)
 
-    try:
+    while True:
 
-        user_input = input(
-            "\nYou: "
-        ).strip()
+        try:
 
-    except (KeyboardInterrupt, EOFError):
+            user_input = input(
+                "\nYou: "
+            ).strip()
 
-        print(
-            "\n\n👋 Agent stopped."
+        except (KeyboardInterrupt, EOFError):
+
+            print(
+                "\n\n👋 Agent stopped."
+            )
+
+            break
+
+        if not user_input:
+
+            continue
+
+        if user_input.lower() in {
+            "exit",
+            "quit"
+        }:
+
+            print(
+                "\n👋 Goodbye!"
+            )
+
+            break
+
+        process_request(
+            user_input
         )
 
-        break
 
-    if not user_input:
+if __name__ == "__main__":
 
-        continue
-
-    if user_input.lower() in {
-        "exit",
-        "quit"
-    }:
-
-        print(
-            "\n👋 Goodbye!"
-        )
-
-        break
-
-    process_request(
-        user_input
-    )
+    main()

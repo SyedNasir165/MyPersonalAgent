@@ -29,8 +29,8 @@ A locally running personal AI assistant developed to explore how AI agents work 
 | 💾 Long-Term Memory | ✅ |
 | 🤖 Tool Selection | ✅ |
 | 🔄 Continuous Conversation | ✅ |
-| 🧩 Multi-Step Autonomous Tasks | 🚧 |
-| 🌐 Web Interface | 🚧 |
+| 🧩 Multi-Step Autonomous Tasks | ✅ |
+| 🌐 Web Interface (Streamlit) | ✅ |
 | 💻 IDE Integration | 🚧 |
 
 ---
@@ -106,10 +106,12 @@ Supports local file creation, reading, and appending.
 MyPersonalAgent/
 │
 ├── agent.py
+├── app.py
 ├── memory.py
 ├── memory.json
 ├── file_tools.py
 ├── python_tool.py
+├── requirements.txt
 │
 └── python_workspace/
     └── agent_script.py
@@ -117,11 +119,13 @@ MyPersonalAgent/
 
 | File | Purpose |
 |---|---|
-| `agent.py` | Main agent and tool routing |
+| `agent.py` | Agent logic, tool routing, task planning & execution (CLI + reusable API) |
+| `app.py` | Streamlit web UI — presentation layer only, calls `agent.handle_message()` |
 | `memory.py` | Persistent memory |
 | `memory.json` | Long-term stored information |
 | `file_tools.py` | Local file operations |
 | `python_tool.py` | Python execution |
+| `requirements.txt` | Python dependencies |
 | `python_workspace/` | Python execution workspace |
 
 ---
@@ -160,6 +164,17 @@ what is my favorite language
 
 Use `exit` or `quit` to close the agent.
 
+### 5. Or run the Streamlit web UI
+
+```cmd
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+The web UI is a thin presentation layer over `agent.py` — all tool logic, planning, and execution stays in the agent module. It requires the same local Ollama + `phi3:mini` setup as the CLI.
+
+**Deployment note:** this currently only works where a local Ollama server is reachable (e.g. your own machine or a VM you control). Hosted platforms like Streamlit Community Cloud have no local Ollama instance, so the agent won't work there out of the box. `agent.ask_ai()` is the single point where all LLM calls go through — swapping it for a hosted LLM API is the only change needed to make the UI deployable to a public host.
+
 ---
 
 ## 🗺️ Development Progress
@@ -179,16 +194,20 @@ Use `exit` or `quit` to close the agent.
 - Long-term memory
 - Continuous conversation
 - Basic AI tool selection
+- Multi-step task planning (Phase 14.1)
+- Sequential task execution (Phase 14.2)
+- Passing results between steps (Phase 14.3)
+- Error recovery in task plans (Phase 14.4)
+- Final summarized agent response (Phase 14.5)
+- Streamlit web UI
 
 ### 🚧 Planned
 
 - Advanced intent detection
-- Multi-step autonomous tasks
 - Improved memory retrieval
-- Better error recovery
-- Web interface
 - VS Code / IDE integration
 - Stronger security and permissions
+- Optional hosted-LLM backend for cloud deployment
 
 ---
 
@@ -216,7 +235,7 @@ The long-term goal is an agent that can understand a request, select the appropr
 
 ## 📊 Status
 
-**Current Stage:** Phase 12  
+**Current Stage:** Phase 14 (14.1–14.5 complete) + Streamlit Web UI  
 **Status:** 🚧 Active Development  
 **Execution:** Local Computer  
 **LLM Runtime:** Ollama  
