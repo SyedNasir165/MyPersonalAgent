@@ -223,17 +223,12 @@ def find_from_conversation(question):
 
     question_lower = question.lower().strip()
 
-    # -----------------------------------------------
-    # Generic "my X" question
-    # -----------------------------------------------
-
     match_question = re.fullmatch(
         r"(?:what is|what's|tell me) my (.+?)[?]?",
         question_lower
     )
 
     if not match_question:
-
         return None
 
     requested_key = (
@@ -241,8 +236,6 @@ def find_from_conversation(question):
         .strip()
         .lower()
     )
-
-    # Search recent user messages
 
     for message in reversed(
         conversation_history
@@ -256,8 +249,6 @@ def find_from_conversation(question):
             .strip()
         )
 
-        # Pattern:
-        # my favorite language is Python
         pattern = (
             r"\bmy\s+"
             + re.escape(requested_key)
@@ -274,8 +265,6 @@ def find_from_conversation(question):
 
             return match.group(1).strip()
 
-        # Pattern:
-        # my name is Nasir
         if requested_key == "name":
 
             match = re.search(
@@ -304,7 +293,6 @@ def remember_command(text):
     )
 
     if not match:
-
         return None
 
     key = match.group(1).strip()
@@ -326,7 +314,6 @@ def recall_command(text):
     )
 
     if not match:
-
         return None
 
     return match.group(1).strip()
@@ -355,19 +342,44 @@ def is_python_request(text):
 
 def is_file_request(text):
 
-    text = text.lower()
+    text = text.lower().strip()
 
-    keywords = [
-        "create a file",
-        "create file",
-        "read file",
-        "open file",
-        "append to file"
+    file_extensions = [
+        ".txt",
+        ".py",
+        ".json",
+        ".csv",
+        ".md",
+        ".html",
+        ".css",
+        ".js",
+        ".java",
+        ".cpp"
+    ]
+
+    has_file = any(
+        extension in text
+        for extension in file_extensions
+    )
+
+    if not has_file:
+        return False
+
+    file_keywords = [
+        "create",
+        "make",
+        "write",
+        "put",
+        "save",
+        "append",
+        "read",
+        "open",
+        "update"
     ]
 
     return any(
         keyword in text
-        for keyword in keywords
+        for keyword in file_keywords
     )
 
 
@@ -397,18 +409,27 @@ def is_web_request(text):
 
 
 # =========================================================
-# CALCULATION DETECTION
+# FLEXIBLE CALCULATOR DETECTION
 # =========================================================
 
 def extract_calculation(text):
 
     expression = text.strip()
 
+    if re.fullmatch(
+        r"[0-9+\-*/%().\s]+",
+        expression
+    ):
+
+        return expression
+
     prefixes = [
         "calculate ",
         "what is ",
         "what's ",
-        "solve "
+        "solve ",
+        "find ",
+        "compute "
     ]
 
     lower_expression = expression.lower()
@@ -430,6 +451,73 @@ def extract_calculation(text):
 
         return expression
 
+    natural = expression.lower()
+
+    replacements = [
+        (r"\bmultiplied by\b", "*"),
+        (r"\btimes\b", "*"),
+        (r"\bdivided by\b", "/"),
+        (r"\bplus\b", "+"),
+        (r"\bminus\b", "-"),
+        (r"\bmodulo\b", "%"),
+        (r"\bmod\b", "%"),
+        (r"\bto the power of\b", "**"),
+        (r"\bpower of\b", "**"),
+    ]
+
+    for pattern, symbol in replacements:
+
+        natural = re.sub(
+            pattern,
+            symbol,
+            natural
+        )
+
+    natural = re.sub(
+        r"\bcalculate\b",
+        "",
+        natural
+    )
+
+    natural = re.sub(
+        r"\bwhat is\b",
+        "",
+        natural
+    )
+
+    natural = re.sub(
+        r"\bwhat's\b",
+        "",
+        natural
+    )
+
+    natural = re.sub(
+        r"\bcan you\b",
+        "",
+        natural
+    )
+
+    natural = re.sub(
+        r"\bplease\b",
+        "",
+        natural
+    )
+
+    natural = re.sub(
+        r"\bthe answer to\b",
+        "",
+        natural
+    )
+
+    natural = natural.strip()
+
+    if re.fullmatch(
+        r"[0-9+\-*/%().\s]+",
+        natural
+    ):
+
+        return natural
+
     return None
 
 
@@ -442,6 +530,7 @@ def is_datetime_request(text):
     text = text.lower().strip()
 
     patterns = [
+
         "today",
         "today date",
         "today's date",
@@ -449,13 +538,20 @@ def is_datetime_request(text):
         "current date",
         "what date",
         "what day is today",
+        "what day",
         "current time",
         "what time is it",
         "what is the time",
         "what's the time",
         "time now",
         "date and time",
-        "date & time"
+        "date & time",
+        "what is today's date",
+        "what's today's date",
+        "tell me today's date",
+        "tell me the date",
+        "tell me the time"
+
     ]
 
     return any(
@@ -465,49 +561,98 @@ def is_datetime_request(text):
 
 
 # =========================================================
-# AGENT DECISION
+# FAST LOCAL TOOL DETECTION
 # =========================================================
 
-def decide_tool(user_input):
+def fast_local_tool(user_input):
 
-    if extract_calculation(user_input):
+    if extract_calculation(
+        user_input
+    ):
 
         return "CALCULATOR"
 
-    if is_datetime_request(user_input):
+    if is_datetime_request(
+        user_input
+    ):
 
         return "DATETIME"
 
-    if remember_command(user_input):
+    if remember_command(
+        user_input
+    ):
 
         return "MEMORY"
 
-    if recall_command(user_input):
+    if recall_command(
+        user_input
+    ):
 
         return "MEMORY"
 
-    if is_python_request(user_input):
+    if is_python_request(
+        user_input
+    ):
 
         return "PYTHON"
 
-    if is_file_request(user_input):
+    if is_file_request(
+        user_input
+    ):
 
         return "FILE"
 
-    if is_web_request(user_input):
+    if is_web_request(
+        user_input
+    ):
 
         return "WEB"
 
-    prompt = f"""
-Choose exactly ONE:
+    return None
 
+
+# =========================================================
+# AI TOOL DECISION
+# =========================================================
+
+def ai_decide_tool(user_input):
+
+    prompt = f"""
+Choose exactly ONE tool:
+
+CALCULATOR
+DATETIME
 WEB
+MEMORY
+PYTHON
+FILE
 CHAT
 
-WEB means the question needs current internet information.
-CHAT means normal conversation or general knowledge.
+Rules:
 
-Return only WEB or CHAT.
+CALCULATOR:
+Use for mathematical calculations.
+
+DATETIME:
+Use for current date or current time.
+
+WEB:
+Use when current internet information is required.
+
+MEMORY:
+Use when the user asks about information stored about themselves.
+
+PYTHON:
+Use when the user asks to run or execute Python code.
+
+FILE:
+Use when the user asks to create, write, read, open, save,
+update, or append text to a local file.
+
+CHAT:
+Use for normal conversation and general questions.
+
+Return ONLY the tool name.
 
 User:
 {user_input}
@@ -520,8 +665,8 @@ User:
                 {
                     "role": "system",
                     "content": (
-                        "You are a simple "
-                        "tool classifier."
+                        "You are a precise tool router. "
+                        "Return only one tool name."
                     )
                 },
                 {
@@ -529,17 +674,46 @@ User:
                     "content": prompt
                 }
             ]
-        ).upper()
+        ).upper().strip()
 
-        if "WEB" in result:
+        valid_tools = {
+            "CALCULATOR",
+            "DATETIME",
+            "WEB",
+            "MEMORY",
+            "PYTHON",
+            "FILE",
+            "CHAT"
+        }
 
-            return "WEB"
+        if result in valid_tools:
+
+            return result
 
     except Exception:
 
         pass
 
     return "CHAT"
+
+
+# =========================================================
+# AGENT DECISION
+# =========================================================
+
+def decide_tool(user_input):
+
+    local_tool = fast_local_tool(
+        user_input
+    )
+
+    if local_tool:
+
+        return local_tool
+
+    return ai_decide_tool(
+        user_input
+    )
 
 
 # =========================================================
@@ -589,6 +763,167 @@ def get_multiline_python():
 
 
 # =========================================================
+# FILE REQUEST PARSER
+# =========================================================
+
+def parse_file_request(user_input):
+
+    text = user_input.strip()
+
+    # -----------------------------------------------------
+    # READ FILE
+    # -----------------------------------------------------
+
+    read_match = re.search(
+        r"(?:read|open)\s+(?:the\s+)?file\s+([^\s]+)",
+        text,
+        re.I
+    )
+
+    if read_match:
+
+        filename = read_match.group(1).strip(
+            "\"'"
+        )
+
+        return {
+            "action": "read",
+            "filename": filename,
+            "content": None
+        }
+
+    # -----------------------------------------------------
+    # APPEND TO FILE
+    # -----------------------------------------------------
+
+    append_match = re.search(
+        r"append\s+(.+?)\s+to\s+(?:the\s+)?file\s+([^\s]+)",
+        text,
+        re.I
+    )
+
+    if append_match:
+
+        content = append_match.group(1).strip()
+
+        filename = append_match.group(2).strip(
+            "\"'"
+        )
+
+        return {
+            "action": "append",
+            "filename": filename,
+            "content": content
+        }
+
+    # -----------------------------------------------------
+    # WRITE / SAVE / PUT CONTENT INTO FILE
+    # -----------------------------------------------------
+
+    write_patterns = [
+
+        r"(?:write|put|save)\s+(.+?)\s+"
+        r"(?:in|into|to)\s+(?:the\s+)?file\s+([^\s]+)",
+
+        r"(?:write|put|save)\s+(.+?)\s+"
+        r"(?:in|into|to)\s+([^\s]+)",
+
+        r"(?:write|put|save)\s+"
+        r"([^\s]+)\s+in\s+([^\s]+)"
+
+    ]
+
+    for pattern in write_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.I
+        )
+
+        if match:
+
+            content = match.group(1).strip()
+
+            filename = match.group(2).strip(
+                "\"'"
+            )
+
+            content = content.strip(
+                "\"'"
+            )
+
+            return {
+                "action": "create",
+                "filename": filename,
+                "content": content
+            }
+
+    # -----------------------------------------------------
+    # CREATE FILE WITH CONTENT
+    # -----------------------------------------------------
+
+    create_with_content = re.search(
+        r"create\s+(?:a\s+)?file\s+(?:called\s+)?([^\s]+)"
+        r"\s+with\s+(.+)",
+        text,
+        re.I
+    )
+
+    if create_with_content:
+
+        filename = create_with_content.group(1).strip(
+            "\"'"
+        )
+
+        content = create_with_content.group(2).strip()
+
+        return {
+            "action": "create",
+            "filename": filename,
+            "content": content
+        }
+
+    # -----------------------------------------------------
+    # CREATE EMPTY FILE
+    # -----------------------------------------------------
+
+    create_patterns = [
+
+        r"(?:can\s+you\s+)?create\s+(?:a\s+)?file"
+        r"\s+(?:called\s+)?([^\s]+)",
+
+        r"(?:can\s+you\s+)?create\s+([^\s]+)"
+        r"\s+file",
+
+        r"(?:can\s+you\s+)?create\s+([^\s]+)"
+
+    ]
+
+    for pattern in create_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.I
+        )
+
+        if match:
+
+            filename = match.group(1).strip(
+                "\"'"
+            )
+
+            return {
+                "action": "create",
+                "filename": filename,
+                "content": ""
+            }
+
+    return None
+
+
+# =========================================================
 # PROCESS REQUEST
 # =========================================================
 
@@ -616,6 +951,15 @@ def process_request(user_input):
         expression = extract_calculation(
             user_input
         )
+
+        if not expression:
+
+            print(
+                "\n❌ I couldn't understand "
+                "the calculation."
+            )
+
+            return
 
         try:
 
@@ -683,13 +1027,18 @@ Web results:
                 answer
             )
 
-        except Exception:
+        except Exception as error:
 
             print(
                 "\n🌐 Search results:"
             )
 
             print(results)
+
+            print(
+                "\n❌ AI processing error:",
+                error
+            )
 
 
     # =====================================================
@@ -699,7 +1048,7 @@ Web results:
     elif tool == "PYTHON":
 
         match = re.search(
-            r"^(?:run|execute)\s+python\s*:?\s*(.*)$",
+            r"^(?:run|execute|use)\s+python\s*:?\s*(.*)$",
             user_input,
             re.I | re.DOTALL
         )
@@ -718,15 +1067,24 @@ Web results:
                 "\n🐍 Running Python..."
             )
 
-            result = run_python(
-                code
-            )
+            try:
 
-            print(
-                "\n🔧 Python result:"
-            )
+                result = run_python(
+                    code
+                )
 
-            print(result)
+                print(
+                    "\n🔧 Python result:"
+                )
+
+                print(result)
+
+            except Exception as error:
+
+                print(
+                    "\n❌ Python execution error:",
+                    error
+                )
 
 
     # =====================================================
@@ -734,10 +1092,6 @@ Web results:
     # =====================================================
 
     elif tool == "MEMORY":
-
-        # -------------------------------------------------
-        # First: check short-term conversation
-        # -------------------------------------------------
 
         conversation_value = find_from_conversation(
             user_input
@@ -752,11 +1106,6 @@ Web results:
 
             return
 
-
-        # -------------------------------------------------
-        # Second: check explicit remember command
-        # -------------------------------------------------
-
         memory_command = remember_command(
             user_input
         )
@@ -765,22 +1114,26 @@ Web results:
 
             key, value = memory_command
 
-            result = remember(
-                key,
-                value
-            )
+            try:
 
-            print(
-                "\n🧠",
-                result
-            )
+                result = remember(
+                    key,
+                    value
+                )
+
+                print(
+                    "\n🧠",
+                    result
+                )
+
+            except Exception as error:
+
+                print(
+                    "\n❌ Memory error:",
+                    error
+                )
 
             return
-
-
-        # -------------------------------------------------
-        # Third: check long-term memory
-        # -------------------------------------------------
 
         key = recall_command(
             user_input
@@ -788,22 +1141,31 @@ Web results:
 
         if key:
 
-            value = recall(
-                key
-            )
+            try:
 
-            if value is not None:
-
-                print(
-                    f"\n🧠 I remember that "
-                    f"{key} is {value}."
+                value = recall(
+                    key
                 )
 
-            else:
+                if value is not None:
+
+                    print(
+                        f"\n🧠 I remember that "
+                        f"{key} is {value}."
+                    )
+
+                else:
+
+                    print(
+                        f"\n🧠 I don't have "
+                        f"'{key}' in my memory."
+                    )
+
+            except Exception as error:
 
                 print(
-                    f"\n🧠 I don't have "
-                    f"'{key}' in my memory."
+                    "\n❌ Memory error:",
+                    error
                 )
 
 
@@ -813,30 +1175,29 @@ Web results:
 
     elif tool == "FILE":
 
-        create_match = re.search(
-            r"create (?:a )?file called ([\w.\-]+) with (.+)",
-            user_input,
-            re.I
+        request = parse_file_request(
+            user_input
         )
 
-        read_match = re.search(
-            r"read (?:the )?file ([\w.\-]+)",
-            user_input,
-            re.I
-        )
+        if not request:
 
-        append_match = re.search(
-            r"append (.+) to ([\w.\-]+)",
-            user_input,
-            re.I
-        )
+            print(
+                "\n❌ I couldn't understand "
+                "the file request."
+            )
+
+            return
 
         try:
 
-            if create_match:
+            action = request["action"]
 
-                filename = create_match.group(1)
-                content = create_match.group(2)
+            filename = request["filename"]
+
+            content = request["content"]
+
+
+            if action == "create":
 
                 result = write_file(
                     filename,
@@ -848,9 +1209,7 @@ Web results:
                     result
                 )
 
-            elif read_match:
-
-                filename = read_match.group(1)
+            elif action == "read":
 
                 result = read_file(
                     filename
@@ -862,10 +1221,7 @@ Web results:
 
                 print(result)
 
-            elif append_match:
-
-                content = append_match.group(1)
-                filename = append_match.group(2)
+            elif action == "append":
 
                 result = append_file(
                     filename,
@@ -875,13 +1231,6 @@ Web results:
                 print(
                     "\n➕",
                     result
-                )
-
-            else:
-
-                print(
-                    "\n❌ I couldn't understand "
-                    "the file request."
                 )
 
         except Exception as error:
