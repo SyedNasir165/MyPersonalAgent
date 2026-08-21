@@ -1,0 +1,357 @@
+1. 🤖 What is an Agent?
+
+An agent is an AI system that can understand a goal, decide what actions are needed, use tools, and complete the task.
+
+Simple example:
+
+You: "Create a file with my DSA notes."
+
+A basic chatbot can tell you how to create it.
+
+An agent can eventually create the file itself using a file tool.
+
+2. 🦙 What does Ollama do?
+
+Ollama runs AI models locally on your computer.
+
+In our project:
+
+Ollama
+   ↓
+Runs
+   ↓
+phi3:mini
+
+So Ollama is basically the software that lets us run our AI model locally.
+
+3. 🧠 What does the AI model do?
+
+Our model is:
+
+phi3:mini
+
+The model is the brain that understands your instructions and generates responses.
+
+For example:
+
+You:
+Explain recursion.
+
+
+       ↓
+
+
+phi3:mini:
+understands the request
+       ↓
+generates explanation
+4. 🐍 How does Python communicate with Ollama?
+
+We installed the Python ollama library.
+
+Our code does:
+
+response = ollama.chat(
+    model="phi3:mini",
+    messages=[
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
+)
+
+The flow is:
+
+Python
+   ↓
+Ollama Python library
+   ↓
+Ollama
+   ↓
+phi3:mini
+   ↓
+Response
+   ↓
+Python
+5. 💬 How do you send your own instructions?
+
+We use:
+
+user_input = input("You: ")
+
+So instead of writing:
+
+"Explain binary search"
+
+directly into the program, you can type whatever you want.
+
+For example:
+
+You: Explain linked lists.
+
+
+You: Give me Python practice questions.
+
+
+You: What is recursion?
+
+Python sends whatever you type to Phi-3 Mini.
+
+🧩 Put everything together
+
+Right now your program is:
+
+                YOU
+                 │
+                 │ instruction
+                 ▼
+             🐍 Python
+                 │
+                 ▼
+             🦙 Ollama
+                 │
+                 ▼
+            🧠 phi3:mini
+                 │
+                 ▼
+              Answer
+
+But notice something:
+
+There are no tools yet.
+
+That's the missing piece.
+
+Once we introduce tools, we can move toward:
+
+                YOU
+                 │
+                 ▼
+              🤖 AGENT
+                 │
+          ┌──────┴──────┐
+          ▼             ▼
+       🧠 AI         🔧 TOOLS
+                         │
+                 ┌───────┼───────┐
+                 ▼       ▼       ▼
+               Files   Python    Web
+
+That's where your program starts becoming a real agent rather than just an interactive chatbot.
+
+So yes — you've got the foundation. 🟢
+
+Next on our fixed roadmap is Phase 4: Tool Calling.
+
+
+Phase 4 — Tool Calling
+
+Now we start the next phase only.
+
+🎯 What is the goal?
+
+Until now, our AI can only talk.
+
+You
+ ↓
+Python
+ ↓
+Ollama
+ ↓
+phi3:mini
+ ↓
+Answer
+
+We want to teach the AI about tools.
+
+A tool is simply a Python function that allows the AI to do something.
+
+For example:
+
+🔧 Calculator
+🔧 File creator
+🔧 Web search
+
+But we are NOT creating those tools yet. That's Phase 5 and later.
+
+1. What is tool calling?
+
+Imagine you tell the AI:
+
+"What is 25 × 40?"
+
+The AI could recognize:
+
+"I need a calculator."
+
+Then it requests a tool:
+
+AI
+ ↓
+"I want to use calculator"
+ ↓
+Python runs calculator
+ ↓
+400
+ ↓
+AI receives 400
+ ↓
+AI answers you
+
+The important thing is:
+
+The AI doesn't directly execute Python.
+
+Instead:
+
+AI → requests tool
+Python → executes tool
+Python → gives result back to AI
+
+That's tool calling.
+
+2. Why do we need this?
+
+Suppose you eventually tell our agent:
+
+"Create a file called notes.txt."
+
+Phi-3 itself doesn't have a magic ability to create files on your computer.
+
+Instead, we'll give Python a function such as:
+
+create_file()
+
+Then the process becomes:
+
+You
+ ↓
+Agent
+ ↓
+AI decides:
+"I need the create_file tool"
+ ↓
+Python executes create_file()
+ ↓
+File created
+ ↓
+AI gets the result
+ ↓
+Agent tells you
+"Done."
+
+This is the foundation of our actual agent.
+
+3. One important distinction
+
+Don't think:
+
+"Ollama gives the AI access to my computer."
+
+It doesn't.
+
+Instead:
+
+             🧠 phi3:mini
+                  │
+                  │ requests
+                  ▼
+             🤖 Python
+                  │
+                  │ executes
+                  ▼
+              🔧 Tool
+                  │
+                  ▼
+               Result
+
+Python controls what the AI is allowed to do.
+
+That's why our agent can be made safer.
+
+4. What will happen in Phase 4?
+
+We're going to learn the tool-calling concept and mechanism.
+
+We will not yet build our file tool.
+
+That comes in:
+
+Phase 5 — Build First Tool
+
+Our roadmap remains:
+
+Phase 1  ✅ Ollama + Phi-3 Mini
+Phase 2  ✅ Python → Ollama
+Phase 3  ✅ Instructions
+Phase 4  🟠 Tool Calling ← YOU ARE HERE
+Phase 5  ⏳ First Tool
+Phase 6  ⏳ Agent Loop
+...
+🧠 The key thing to remember
+
+A normal chatbot:
+
+You → AI → Answer
+
+A tool-using AI:
+
+You
+ ↓
+AI
+ ↓
+"I need a tool"
+ ↓
+Python
+ ↓
+Tool
+ ↓
+Result
+ ↓
+AI
+ ↓
+Answer
+
+And an agent will eventually combine this with decision-making and a loop so it can perform multi-step tasks.
+
+Before we write code
+
+I want you to understand this one sentence:
+
+Tool calling means the AI can request a specific function, and our Python program executes that function and returns the result to the AI.
+
+Once that makes sense, we'll do the actual Phase 4 implementation with our Ollama/Phi-3 setup.
+
+
+1. What is an agent loop?
+
+Right now our program basically does:
+
+You
+ ↓
+AI
+ ↓
+Tool
+ ↓
+Result
+
+An agent needs to be able to do this:
+
+You
+ ↓
+AI thinks about what to do
+ ↓
+Does it need a tool?
+ ↓
+YES → use tool
+ ↓
+Get result
+ ↓
+Give result back to AI
+ ↓
+AI thinks again
+ ↓
+Finish
+
+That repeating process is the agent loop.
