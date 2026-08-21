@@ -1,2 +1,1 @@
-for i in range(5):
-    print(i)
+to print the numbers from 1 to 5.

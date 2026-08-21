@@ -327,12 +327,27 @@ def is_python_request(text):
 
     text = text.lower().strip()
 
-    return (
-        text.startswith("run python")
-        or
-        text.startswith("execute python")
-        or
-        text.startswith("use python")
+    python_patterns = [
+
+        r"^run\s+python\b",
+        r"^execute\s+python\b",
+        r"^use\s+python\b",
+        r"^run\s+this\s+python\b",
+        r"^execute\s+this\s+python\b",
+        r"\brun\s+the\s+following\s+python\b",
+        r"\bexecute\s+the\s+following\s+python\b",
+        r"\brun\s+a\s+python\s+program\b",
+        r"\bexecute\s+a\s+python\s+program\b"
+
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            text,
+            re.I
+        )
+        for pattern in python_patterns
     )
 
 
@@ -416,12 +431,64 @@ def extract_calculation(text):
 
     expression = text.strip()
 
+    # -----------------------------------------------------
+    # Remove common sentence-ending punctuation.
+    #
+    # Example:
+    # What is 25 multiplied by 40?
+    #
+    # The question mark should not prevent the expression
+    # from being recognized.
+    # -----------------------------------------------------
+
+    expression = expression.rstrip(
+        ".,!?;"
+    ).strip()
+
+    # -----------------------------------------------------
+    # DIRECT MATHEMATICAL EXPRESSION
+    # -----------------------------------------------------
+
     if re.fullmatch(
         r"[0-9+\-*/%().\s]+",
         expression
     ):
 
         return expression
+
+    # -----------------------------------------------------
+    # PERCENTAGE CALCULATIONS
+    #
+    # Examples:
+    # 15% of 200
+    # What is 15 percent of 200?
+    # Calculate 25% of 800
+    # -----------------------------------------------------
+
+    percentage_match = re.search(
+        r"(\d+(?:\.\d+)?)\s*%\s*(?:of)\s*(\d+(?:\.\d+)?)",
+        expression,
+        re.I
+    )
+
+    if not percentage_match:
+
+        percentage_match = re.search(
+            r"(\d+(?:\.\d+)?)\s*percent\s*(?:of)\s*(\d+(?:\.\d+)?)",
+            expression,
+            re.I
+        )
+
+    if percentage_match:
+
+        percentage = percentage_match.group(1)
+        number = percentage_match.group(2)
+
+        return f"({percentage} / 100) * {number}"
+
+    # -----------------------------------------------------
+    # COMMON CALCULATION PREFIXES
+    # -----------------------------------------------------
 
     prefixes = [
         "calculate ",
@@ -444,6 +511,10 @@ def extract_calculation(text):
 
             break
 
+    # -----------------------------------------------------
+    # DIRECT EXPRESSION AFTER PREFIX
+    # -----------------------------------------------------
+
     if re.fullmatch(
         r"[0-9+\-*/%().\s]+",
         expression
@@ -451,18 +522,24 @@ def extract_calculation(text):
 
         return expression
 
+    # -----------------------------------------------------
+    # NATURAL LANGUAGE OPERATIONS
+    # -----------------------------------------------------
+
     natural = expression.lower()
 
     replacements = [
-        (r"\bmultiplied by\b", "*"),
+
+        (r"\bmultiplied\s+by\b", "*"),
         (r"\btimes\b", "*"),
-        (r"\bdivided by\b", "/"),
+        (r"\bdivided\s+by\b", "/"),
         (r"\bplus\b", "+"),
         (r"\bminus\b", "-"),
         (r"\bmodulo\b", "%"),
         (r"\bmod\b", "%"),
-        (r"\bto the power of\b", "**"),
-        (r"\bpower of\b", "**"),
+        (r"\bto\s+the\s+power\s+of\b", "**"),
+        (r"\bpower\s+of\b", "**")
+
     ]
 
     for pattern, symbol in replacements:
@@ -508,6 +585,15 @@ def extract_calculation(text):
         "",
         natural
     )
+
+    # -----------------------------------------------------
+    # Remove punctuation again after natural-language
+    # conversion.
+    # -----------------------------------------------------
+
+    natural = natural.rstrip(
+        ".,!?;"
+    ).strip()
 
     natural = natural.strip()
 
@@ -566,17 +652,9 @@ def is_datetime_request(text):
 
 def fast_local_tool(user_input):
 
-    if extract_calculation(
-        user_input
-    ):
-
-        return "CALCULATOR"
-
-    if is_datetime_request(
-        user_input
-    ):
-
-        return "DATETIME"
+    # -----------------------------------------------------
+    # Explicit memory commands
+    # -----------------------------------------------------
 
     if remember_command(
         user_input
@@ -590,11 +668,19 @@ def fast_local_tool(user_input):
 
         return "MEMORY"
 
+    # -----------------------------------------------------
+    # Explicit Python requests
+    # -----------------------------------------------------
+
     if is_python_request(
         user_input
     ):
 
         return "PYTHON"
+
+    # -----------------------------------------------------
+    # File requests
+    # -----------------------------------------------------
 
     if is_file_request(
         user_input
@@ -602,11 +688,35 @@ def fast_local_tool(user_input):
 
         return "FILE"
 
+    # -----------------------------------------------------
+    # Date and time
+    # -----------------------------------------------------
+
+    if is_datetime_request(
+        user_input
+    ):
+
+        return "DATETIME"
+
+    # -----------------------------------------------------
+    # Web requests
+    # -----------------------------------------------------
+
     if is_web_request(
         user_input
     ):
 
         return "WEB"
+
+    # -----------------------------------------------------
+    # Calculator
+    # -----------------------------------------------------
+
+    if extract_calculation(
+        user_input
+    ):
+
+        return "CALCULATOR"
 
     return None
 
@@ -618,7 +728,9 @@ def fast_local_tool(user_input):
 def ai_decide_tool(user_input):
 
     prompt = f"""
-Choose exactly ONE tool:
+Choose exactly ONE tool for the user's request.
+
+Available tools:
 
 CALCULATOR
 DATETIME
@@ -628,31 +740,140 @@ PYTHON
 FILE
 CHAT
 
-Rules:
+=========================================================
+CALCULATOR
+=========================================================
 
-CALCULATOR:
-Use for mathematical calculations.
+Choose CALCULATOR when the user wants a mathematical
+calculation or numerical answer.
 
-DATETIME:
-Use for current date or current time.
+Examples:
 
-WEB:
-Use when current internet information is required.
+"What is 25 multiplied by 40?"
+"Calculate 15% of 200."
+"What's 88 + 7?"
+"How much is 25 times 8?"
+"Find 20 percent of 500."
 
-MEMORY:
-Use when the user asks about information stored about themselves.
+Do NOT choose CALCULATOR simply because a question
+contains a number.
 
-PYTHON:
-Use when the user asks to run or execute Python code.
+=========================================================
+DATETIME
+=========================================================
 
-FILE:
-Use when the user asks to create, write, read, open, save,
-update, or append text to a local file.
+Choose DATETIME when the user asks for the current date,
+current day, or current time.
 
-CHAT:
-Use for normal conversation and general questions.
+Examples:
 
-Return ONLY the tool name.
+"What time is it?"
+"What is today's date?"
+"What day is today?"
+"Tell me the current time."
+
+=========================================================
+WEB
+=========================================================
+
+Choose WEB when the user explicitly asks to search online,
+search the web, look something up, or needs current/recent
+internet information.
+
+Examples:
+
+"Search the web for the latest Python news."
+"Look up the latest AI news."
+"Search online for Python 3.15."
+"What happened recently in AI?"
+
+=========================================================
+MEMORY
+=========================================================
+
+Choose MEMORY when the user wants to save or recall
+personal information.
+
+Examples:
+
+"Remember that my favorite editor is VS Code."
+"What is my favorite editor?"
+"Tell me what you remember about my favorite editor."
+
+=========================================================
+PYTHON
+=========================================================
+
+Choose PYTHON only when the user explicitly asks to
+run or execute Python code.
+
+Examples:
+
+"Run Python to print numbers from 1 to 5."
+"Execute this Python code."
+"Use Python to calculate something."
+
+Do NOT choose PYTHON for a normal programming question.
+
+For example:
+
+"What is recursion?"
+"What is a Python function?"
+"Explain recursion."
+
+These are CHAT unless the user explicitly asks you to
+execute Python code.
+
+=========================================================
+FILE
+=========================================================
+
+Choose FILE when the user wants to create, write, read,
+open, update, save, or append a local file.
+
+Examples:
+
+"Create a file called test.txt."
+"Read phase13.txt."
+"Write Hello into notes.txt."
+"Append this text to notes.txt."
+
+=========================================================
+CHAT
+=========================================================
+
+Choose CHAT for normal questions, explanations,
+definitions, programming concepts, conversation, and
+general knowledge that does not require a tool.
+
+Examples:
+
+"What is recursion?"
+"Explain linked lists."
+"What is Python?"
+"How does binary search work?"
+
+=========================================================
+IMPORTANT RULES
+=========================================================
+
+1. Do not choose PYTHON merely because the question
+   mentions Python.
+
+2. Do not choose CALCULATOR merely because the question
+   contains numbers.
+
+3. Choose WEB when current or recent internet information
+   is required.
+
+4. Choose FILE when a local file operation is requested.
+
+5. Choose MEMORY for personal information being stored
+   or recalled.
+
+6. Choose CHAT for explanations and general questions.
+
+Return ONLY one tool name.
 
 User:
 {user_input}
@@ -665,8 +886,10 @@ User:
                 {
                     "role": "system",
                     "content": (
-                        "You are a precise tool router. "
-                        "Return only one tool name."
+                        "You are a precise intent classifier. "
+                        "Classify the user's request into exactly "
+                        "one available tool. Never return an "
+                        "explanation. Return only the tool name."
                     )
                 },
                 {
@@ -675,6 +898,12 @@ User:
                 }
             ]
         ).upper().strip()
+
+        result = re.sub(
+            r"[^A-Z_]",
+            "",
+            result
+        )
 
         valid_tools = {
             "CALCULATOR",
@@ -743,7 +972,7 @@ def get_multiline_python():
 
             return None
 
-        if line.strip() == "END":
+        if line.strip().lower() == "end":
 
             break
 
@@ -763,6 +992,105 @@ def get_multiline_python():
 
 
 # =========================================================
+# PYTHON REQUEST PARSER
+# =========================================================
+
+def parse_python_request(user_input):
+
+    text = user_input.strip()
+
+    # -----------------------------------------------------
+    # Explicit Python code after colon
+    # -----------------------------------------------------
+
+    colon_match = re.search(
+        r"^(?:run|execute|use)\s+python\s*:\s*(.*)$",
+        text,
+        re.I | re.DOTALL
+    )
+
+    if colon_match:
+
+        code = colon_match.group(1).strip()
+
+        if code:
+
+            return code
+
+    # -----------------------------------------------------
+    # Python code after "run python"
+    # -----------------------------------------------------
+
+    match = re.search(
+        r"^(?:run|execute|use)\s+python\s+(.+)$",
+        text,
+        re.I | re.DOTALL
+    )
+
+    if match:
+
+        content = match.group(1).strip()
+
+        python_indicators = [
+            "print(",
+            "for ",
+            "while ",
+            "if ",
+            "def ",
+            "import ",
+            "from ",
+            "=",
+            "return ",
+            "class "
+        ]
+
+        if any(
+            indicator in content
+            for indicator in python_indicators
+        ):
+
+            return content
+
+        # -------------------------------------------------
+        # Natural-language Python request
+        # -------------------------------------------------
+
+        number_range_match = re.search(
+            r"print\s+the\s+numbers?\s+from\s+(\d+)\s+to\s+(\d+)",
+            content,
+            re.I
+        )
+
+        if number_range_match:
+
+            start = number_range_match.group(1)
+            end = number_range_match.group(2)
+
+            return (
+                f"for i in range({start}, {end} + 1):\n"
+                f"    print(i)"
+            )
+
+        print_numbers_match = re.search(
+            r"print\s+numbers?\s+from\s+(\d+)\s+to\s+(\d+)",
+            content,
+            re.I
+        )
+
+        if print_numbers_match:
+
+            start = print_numbers_match.group(1)
+            end = print_numbers_match.group(2)
+
+            return (
+                f"for i in range({start}, {end} + 1):\n"
+                f"    print(i)"
+            )
+
+    return None
+
+
+# =========================================================
 # FILE REQUEST PARSER
 # =========================================================
 
@@ -772,10 +1100,17 @@ def parse_file_request(user_input):
 
     # -----------------------------------------------------
     # READ FILE
+    #
+    # Supports:
+    #
+    # read file phase13.txt
+    # read phase13.txt
+    # open file phase13.txt
+    # open phase13.txt
     # -----------------------------------------------------
 
     read_match = re.search(
-        r"(?:read|open)\s+(?:the\s+)?file\s+([^\s]+)",
+        r"(?:read|open)\s+(?:the\s+)?(?:file\s+)?([^\s]+)",
         text,
         re.I
     )
@@ -784,6 +1119,10 @@ def parse_file_request(user_input):
 
         filename = read_match.group(1).strip(
             "\"'"
+        )
+
+        filename = filename.rstrip(
+            ".,!?;"
         )
 
         return {
@@ -808,6 +1147,10 @@ def parse_file_request(user_input):
 
         filename = append_match.group(2).strip(
             "\"'"
+        )
+
+        filename = filename.rstrip(
+            ".,!?;"
         )
 
         return {
@@ -849,6 +1192,10 @@ def parse_file_request(user_input):
                 "\"'"
             )
 
+            filename = filename.rstrip(
+                ".,!?;"
+            )
+
             content = content.strip(
                 "\"'"
             )
@@ -874,6 +1221,10 @@ def parse_file_request(user_input):
 
         filename = create_with_content.group(1).strip(
             "\"'"
+        )
+
+        filename = filename.rstrip(
+            ".,!?;"
         )
 
         content = create_with_content.group(2).strip()
@@ -912,6 +1263,10 @@ def parse_file_request(user_input):
 
             filename = match.group(1).strip(
                 "\"'"
+            )
+
+            filename = filename.rstrip(
+                ".,!?;"
             )
 
             return {
@@ -1047,17 +1402,11 @@ Web results:
 
     elif tool == "PYTHON":
 
-        match = re.search(
-            r"^(?:run|execute|use)\s+python\s*:?\s*(.*)$",
-            user_input,
-            re.I | re.DOTALL
+        code = parse_python_request(
+            user_input
         )
 
-        if match and match.group(1).strip():
-
-            code = match.group(1).strip()
-
-        else:
+        if not code:
 
             code = get_multiline_python()
 
