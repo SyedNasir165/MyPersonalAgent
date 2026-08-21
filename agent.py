@@ -20,6 +20,282 @@ conversation_history = []
 
 
 # =========================================================
+# PHASE 14.1 — TASK PLANNING
+# =========================================================
+
+def is_multi_step_task(text):
+
+    text = normalize_intent_text(text)
+
+    # -----------------------------------------------------
+    # Explicit multi-step connectors
+    # -----------------------------------------------------
+
+    step_indicators = [
+
+        r"\band\s+then\b",
+
+        r"\bthen\b",
+
+        r"\bafter\s+that\b",
+
+        r"\bnext\b",
+
+        r"\bfinally\b",
+
+        r"\bafterwards\b",
+
+        r"\bfollowed\s+by\b"
+
+    ]
+
+    for pattern in step_indicators:
+
+        if re.search(
+            pattern,
+            text,
+            re.I
+        ):
+
+            return True
+
+    # -----------------------------------------------------
+    # Multiple actions in one request
+    # -----------------------------------------------------
+
+    action_patterns = [
+
+        r"\bcreate\b.*\bread\b",
+
+        r"\bwrite\b.*\bread\b",
+
+        r"\bcreate\b.*\bwrite\b",
+
+        r"\bwrite\b.*\bthen\b",
+
+        r"\bcreate\b.*\bthen\b",
+
+        r"\bsearch\b.*\bthen\b",
+
+        r"\bcalculate\b.*\bwrite\b",
+
+        r"\bcalculate\b.*\bsave\b",
+
+        r"\brun\b.*\bthen\b",
+
+        r"\bexecute\b.*\bthen\b"
+
+    ]
+
+    for pattern in action_patterns:
+
+        if re.search(
+            pattern,
+            text,
+            re.I
+        ):
+
+            return True
+
+    return False
+
+
+def create_task_plan(user_input):
+
+    """
+    Phase 14.1:
+    Break a complex request into ordered steps.
+
+    This function only creates the plan.
+    It does NOT execute the steps yet.
+    """
+
+    text = user_input.strip()
+
+    # -----------------------------------------------------
+    # Known Phase 14.1 test case
+    #
+    # Create a file called phase14.txt,
+    # write Hello Phase 14 into it,
+    # and then read it.
+    # -----------------------------------------------------
+
+    if (
+        re.search(
+            r"\bcreate\b.*\bfile\b",
+            text,
+            re.I
+        )
+        and
+        re.search(
+            r"\bwrite\b",
+            text,
+            re.I
+        )
+        and
+        re.search(
+            r"\bread\b",
+            text,
+            re.I
+        )
+    ):
+
+        file_match = re.search(
+            r"(?:file\s+(?:called\s+)?|called\s+)"
+            r"([A-Za-z0-9_.-]+\.[A-Za-z0-9]+)",
+            text,
+            re.I
+        )
+
+        filename = None
+
+        if file_match:
+
+            filename = file_match.group(1)
+
+        content_match = re.search(
+            r"\bwrite\s+(.+?)\s+(?:into|in|to)\s+"
+            r"(?:the\s+)?(?:file\s+)?"
+            r"[A-Za-z0-9_.-]+\.[A-Za-z0-9]+",
+            text,
+            re.I
+        )
+
+        content = None
+
+        if content_match:
+
+            content = content_match.group(1).strip(
+                "\"'"
+            )
+
+        if filename and content:
+
+            return [
+
+                f"Create the file {filename}",
+
+                f"Write '{content}' into {filename}",
+
+                f"Read {filename}"
+
+            ]
+
+    # -----------------------------------------------------
+    # Generic planning using the AI
+    # -----------------------------------------------------
+
+    prompt = f"""
+Break the user's request into a small number of clear,
+ordered tasks.
+
+This is Phase 14.1 of a personal AI agent.
+
+IMPORTANT:
+
+- Do NOT execute anything.
+- Do NOT use tools.
+- Do NOT write Python code.
+- Only create the task plan.
+- Each task must be one simple action.
+- Keep the original intention of the user.
+- Use numbered steps.
+- Return ONLY the task descriptions.
+- Do not add explanations.
+
+User request:
+
+{text}
+"""
+
+    try:
+
+        result = ask_ai(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a task planner for a personal "
+                        "AI agent. Break complex requests into "
+                        "small ordered steps. Do not execute "
+                        "anything."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+
+        lines = []
+
+        for line in result.splitlines():
+
+            line = line.strip()
+
+            line = re.sub(
+                r"^\d+[\).\-\:]\s*",
+                "",
+                line
+            )
+
+            line = re.sub(
+                r"^[-*]\s*",
+                "",
+                line
+            )
+
+            if line:
+
+                lines.append(line)
+
+        if lines:
+
+            return lines
+
+    except Exception:
+
+        pass
+
+    return [text]
+
+
+def show_task_plan(user_input):
+
+    print(
+        "\n🤖 Agent is planning..."
+    )
+
+    plan = create_task_plan(
+        user_input
+    )
+
+    print(
+        "\n📋 Task plan:"
+    )
+
+    for index, step in enumerate(
+        plan,
+        start=1
+    ):
+
+        print(
+            f"{index}. {step}"
+        )
+
+    print(
+        "\nℹ️ Phase 14.1: Planning complete."
+    )
+
+    print(
+        "ℹ️ Step execution will be added in Phase 14.2."
+    )
+
+    return plan
+
+
+# =========================================================
 # CALCULATOR
 # =========================================================
 
@@ -292,13 +568,40 @@ def remember_command(text):
         re.I
     )
 
-    if not match:
-        return None
+    if match:
 
-    key = match.group(1).strip()
-    value = match.group(2).strip()
+        key = match.group(1).strip()
+        value = match.group(2).strip()
 
-    return key, value
+        return key, value
+
+    match = re.search(
+        r"remember (?:that\s+)?my\s+(.+?)\s+is\s+(.+)",
+        text,
+        re.I
+    )
+
+    if match:
+
+        key = match.group(1).strip()
+        value = match.group(2).strip()
+
+        return key, value
+
+    match = re.search(
+        r"keep in mind (?:that\s+)?my\s+(.+?)\s+is\s+(.+)",
+        text,
+        re.I
+    )
+
+    if match:
+
+        key = match.group(1).strip()
+        value = match.group(2).strip()
+
+        return key, value
+
+    return None
 
 
 # =========================================================
@@ -307,16 +610,43 @@ def remember_command(text):
 
 def recall_command(text):
 
+    text = text.strip()
+
     match = re.fullmatch(
         r"(?:what is|what's|tell me) my (.+?)[?]?",
-        text.strip(),
+        text,
         re.I
     )
 
-    if not match:
-        return None
+    if match:
 
-    return match.group(1).strip()
+        return match.group(1).strip()
+
+    patterns = [
+
+        r"what do you remember about my (.+?)[?]?",
+
+        r"do you remember my (.+?)[?]?",
+
+        r"what do you know about my (.+?)[?]?",
+
+        r"can you tell me my (.+?)[?]?"
+
+    ]
+
+    for pattern in patterns:
+
+        match = re.fullmatch(
+            pattern,
+            text,
+            re.I
+        )
+
+        if match:
+
+            return match.group(1).strip()
+
+    return None
 
 
 # =========================================================
@@ -330,14 +660,28 @@ def is_python_request(text):
     python_patterns = [
 
         r"^run\s+python\b",
+
         r"^execute\s+python\b",
+
         r"^use\s+python\b",
+
         r"^run\s+this\s+python\b",
+
         r"^execute\s+this\s+python\b",
+
         r"\brun\s+the\s+following\s+python\b",
+
         r"\bexecute\s+the\s+following\s+python\b",
+
         r"\brun\s+a\s+python\s+program\b",
-        r"\bexecute\s+a\s+python\s+program\b"
+
+        r"\bexecute\s+a\s+python\s+program\b",
+
+        r"^run\s+this\s+code\s+in\s+python\b",
+
+        r"^execute\s+this\s+code\s+in\s+python\b",
+
+        r"^use\s+python\s+to\b"
 
     ]
 
@@ -360,6 +704,7 @@ def is_file_request(text):
     text = text.lower().strip()
 
     file_extensions = [
+
         ".txt",
         ".py",
         ".json",
@@ -370,6 +715,7 @@ def is_file_request(text):
         ".js",
         ".java",
         ".cpp"
+
     ]
 
     has_file = any(
@@ -381,6 +727,7 @@ def is_file_request(text):
         return False
 
     file_keywords = [
+
         "create",
         "make",
         "write",
@@ -389,7 +736,10 @@ def is_file_request(text):
         "append",
         "read",
         "open",
-        "update"
+        "update",
+        "show",
+        "display"
+
     ]
 
     return any(
@@ -404,17 +754,26 @@ def is_file_request(text):
 
 def is_web_request(text):
 
-    text = text.lower()
+    text = text.lower().strip()
 
     keywords = [
+
         "search the web",
         "search online",
         "search internet",
+        "search the internet",
         "search for",
         "look up",
+        "look online",
+        "find online",
         "latest",
         "recent",
-        "news about"
+        "news about",
+        "latest news",
+        "current news",
+        "what happened recently",
+        "what is happening recently"
+
     ]
 
     return any(
@@ -431,23 +790,9 @@ def extract_calculation(text):
 
     expression = text.strip()
 
-    # -----------------------------------------------------
-    # Remove common sentence-ending punctuation.
-    #
-    # Example:
-    # What is 25 multiplied by 40?
-    #
-    # The question mark should not prevent the expression
-    # from being recognized.
-    # -----------------------------------------------------
-
     expression = expression.rstrip(
         ".,!?;"
     ).strip()
-
-    # -----------------------------------------------------
-    # DIRECT MATHEMATICAL EXPRESSION
-    # -----------------------------------------------------
 
     if re.fullmatch(
         r"[0-9+\-*/%().\s]+",
@@ -455,15 +800,6 @@ def extract_calculation(text):
     ):
 
         return expression
-
-    # -----------------------------------------------------
-    # PERCENTAGE CALCULATIONS
-    #
-    # Examples:
-    # 15% of 200
-    # What is 15 percent of 200?
-    # Calculate 25% of 800
-    # -----------------------------------------------------
 
     percentage_match = re.search(
         r"(\d+(?:\.\d+)?)\s*%\s*(?:of)\s*(\d+(?:\.\d+)?)",
@@ -486,17 +822,18 @@ def extract_calculation(text):
 
         return f"({percentage} / 100) * {number}"
 
-    # -----------------------------------------------------
-    # COMMON CALCULATION PREFIXES
-    # -----------------------------------------------------
-
     prefixes = [
+
         "calculate ",
         "what is ",
         "what's ",
         "solve ",
         "find ",
-        "compute "
+        "compute ",
+        "how much is ",
+        "what is the value of ",
+        "what's the value of "
+
     ]
 
     lower_expression = expression.lower()
@@ -511,34 +848,39 @@ def extract_calculation(text):
 
             break
 
-    # -----------------------------------------------------
-    # DIRECT EXPRESSION AFTER PREFIX
-    # -----------------------------------------------------
-
-    if re.fullmatch(
-        r"[0-9+\-*/%().\s]+",
-        expression
-    ):
-
-        return expression
-
-    # -----------------------------------------------------
-    # NATURAL LANGUAGE OPERATIONS
-    # -----------------------------------------------------
-
     natural = expression.lower()
 
     replacements = [
 
         (r"\bmultiplied\s+by\b", "*"),
+
+        (r"\bmultiply\s+by\b", "*"),
+
         (r"\btimes\b", "*"),
+
         (r"\bdivided\s+by\b", "/"),
+
+        (r"\bdivide\s+by\b", "/"),
+
         (r"\bplus\b", "+"),
+
+        (r"\badd\b", "+"),
+
         (r"\bminus\b", "-"),
+
+        (r"\bsubtract\b", "-"),
+
         (r"\bmodulo\b", "%"),
+
         (r"\bmod\b", "%"),
+
         (r"\bto\s+the\s+power\s+of\b", "**"),
-        (r"\bpower\s+of\b", "**")
+
+        (r"\bpower\s+of\b", "**"),
+
+        (r"\bsquared\b", "** 2"),
+
+        (r"\bcubed\b", "** 3")
 
     ]
 
@@ -550,46 +892,55 @@ def extract_calculation(text):
             natural
         )
 
-    natural = re.sub(
+    remove_patterns = [
+
         r"\bcalculate\b",
-        "",
-        natural
-    )
 
-    natural = re.sub(
         r"\bwhat is\b",
-        "",
-        natural
-    )
 
-    natural = re.sub(
         r"\bwhat's\b",
-        "",
-        natural
-    )
 
-    natural = re.sub(
         r"\bcan you\b",
-        "",
-        natural
-    )
 
-    natural = re.sub(
         r"\bplease\b",
-        "",
+
+        r"\bthe answer to\b",
+
+        r"\bthe product of\b",
+
+        r"\bthe sum of\b",
+
+        r"\bthe difference between\b",
+
+        r"\bthe result of\b",
+
+        r"\bhow much is\b",
+
+        r"\bwhat is the value of\b",
+
+        r"\bwhat's the value of\b"
+
+    ]
+
+    for pattern in remove_patterns:
+
+        natural = re.sub(
+            pattern,
+            "",
+            natural
+        )
+
+    natural = re.sub(
+        r"(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)",
+        r"\1 * \2",
         natural
     )
 
     natural = re.sub(
-        r"\bthe answer to\b",
-        "",
+        r"(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)",
+        r"\1 + \2",
         natural
     )
-
-    # -----------------------------------------------------
-    # Remove punctuation again after natural-language
-    # conversion.
-    # -----------------------------------------------------
 
     natural = natural.rstrip(
         ".,!?;"
@@ -636,7 +987,15 @@ def is_datetime_request(text):
         "what's today's date",
         "tell me today's date",
         "tell me the date",
-        "tell me the time"
+        "tell me the time",
+        "what time is it right now",
+        "what is the current time",
+        "what's the current time",
+        "tell me the current time",
+        "what is the date today",
+        "what's the date today",
+        "what is today's day",
+        "what day is it"
 
     ]
 
@@ -647,73 +1006,389 @@ def is_datetime_request(text):
 
 
 # =========================================================
+# ADVANCED INTENT NORMALIZATION
+# =========================================================
+
+def normalize_intent_text(text):
+
+    text = text.lower().strip()
+
+    text = re.sub(
+        r"[.,!?;]+$",
+        "",
+        text
+    )
+
+    text = text.replace(
+        "×",
+        "*"
+    )
+
+    text = text.replace(
+        "÷",
+        "/"
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    return text.strip()
+
+
+# =========================================================
+# ADVANCED CALCULATOR INTENT
+# =========================================================
+
+def is_advanced_calculator_request(text):
+
+    text = normalize_intent_text(
+        text
+    )
+
+    calculator_patterns = [
+
+        r"\bwhat is the product of\b",
+
+        r"\bwhat's the product of\b",
+
+        r"\bcalculate the product of\b",
+
+        r"\bfind the product of\b",
+
+        r"\bwhat is the sum of\b",
+
+        r"\bwhat's the sum of\b",
+
+        r"\bcalculate the sum of\b",
+
+        r"\bfind the sum of\b",
+
+        r"\bwhat is the difference between\b",
+
+        r"\bwhat's the difference between\b",
+
+        r"\bcalculate the difference between\b",
+
+        r"\bhow much is\b",
+
+        r"\bwhat is the result of\b",
+
+        r"\bwhat's the result of\b",
+
+        r"\bcalculate the result of\b",
+
+        r"\bwhat is the value of\b",
+
+        r"\bwhat's the value of\b"
+
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            text,
+            re.I
+        )
+        for pattern in calculator_patterns
+    )
+
+
+# =========================================================
+# ADVANCED WEB INTENT
+# =========================================================
+
+def is_advanced_web_request(text):
+
+    text = normalize_intent_text(
+        text
+    )
+
+    patterns = [
+
+        r"^search\s+.+",
+
+        r"^look\s+up\s+.+",
+
+        r"^find\s+.+\s+online$",
+
+        r"^search\s+online\s+for\s+.+",
+
+        r"^search\s+the\s+internet\s+for\s+.+",
+
+        r"^can\s+you\s+search\s+.+",
+
+        r"^can\s+you\s+look\s+up\s+.+",
+
+        r"^find\s+the\s+latest\s+.+",
+
+        r"^tell\s+me\s+the\s+latest\s+.+"
+
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            text,
+            re.I
+        )
+        for pattern in patterns
+    )
+
+
+# =========================================================
+# ADVANCED FILE INTENT
+# =========================================================
+
+def is_advanced_file_request(text):
+
+    text = normalize_intent_text(
+        text
+    )
+
+    file_extensions = [
+
+        ".txt",
+        ".py",
+        ".json",
+        ".csv",
+        ".md",
+        ".html",
+        ".css",
+        ".js",
+        ".java",
+        ".cpp"
+
+    ]
+
+    has_file = any(
+        extension in text
+        for extension in file_extensions
+    )
+
+    if not has_file:
+
+        return False
+
+    patterns = [
+
+        r"\bshow\s+me\b",
+
+        r"\bdisplay\b",
+
+        r"\bopen\b",
+
+        r"\bread\b",
+
+        r"\bview\b",
+
+        r"\bcreate\b",
+
+        r"\bmake\b",
+
+        r"\bwrite\b",
+
+        r"\bsave\b",
+
+        r"\bappend\b",
+
+        r"\bupdate\b"
+
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            text,
+            re.I
+        )
+        for pattern in patterns
+    )
+
+
+# =========================================================
+# ADVANCED PYTHON INTENT
+# =========================================================
+
+def is_advanced_python_request(text):
+
+    text = normalize_intent_text(
+        text
+    )
+
+    patterns = [
+
+        r"\brun\s+python\b",
+
+        r"\bexecute\s+python\b",
+
+        r"\buse\s+python\s+to\b",
+
+        r"\brun\s+this\s+code\s+in\s+python\b",
+
+        r"\bexecute\s+this\s+code\s+in\s+python\b",
+
+        r"\brun\s+a\s+python\s+program\b",
+
+        r"\bexecute\s+a\s+python\s+program\b"
+
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            text,
+            re.I
+        )
+        for pattern in patterns
+    )
+
+
+# =========================================================
+# ADVANCED MEMORY INTENT
+# =========================================================
+
+def is_advanced_memory_request(text):
+
+    text = normalize_intent_text(
+        text
+    )
+
+    remember_patterns = [
+
+        r"^remember\s+that\b",
+
+        r"^remember\s+my\b",
+
+        r"^keep\s+in\s+mind\b",
+
+        r"^save\s+this\s+in\s+memory\b",
+
+        r"^remember\s+this\b"
+
+    ]
+
+    recall_patterns = [
+
+        r"^what\s+is\s+my\b",
+
+        r"^what's\s+my\b",
+
+        r"^tell\s+me\s+my\b",
+
+        r"^do\s+you\s+remember\s+my\b",
+
+        r"^what\s+do\s+you\s+remember\s+about\s+my\b",
+
+        r"^what\s+do\s+you\s+know\s+about\s+my\b",
+
+        r"^can\s+you\s+tell\s+me\s+my\b"
+
+    ]
+
+    for pattern in remember_patterns:
+
+        if re.search(
+            pattern,
+            text,
+            re.I
+        ):
+
+            return True
+
+    for pattern in recall_patterns:
+
+        if re.search(
+            pattern,
+            text,
+            re.I
+        ):
+
+            return True
+
+    return False
+
+
+# =========================================================
 # FAST LOCAL TOOL DETECTION
 # =========================================================
 
 def fast_local_tool(user_input):
 
-    # -----------------------------------------------------
-    # Explicit memory commands
-    # -----------------------------------------------------
+    normalized = normalize_intent_text(
+        user_input
+    )
 
     if remember_command(
-        user_input
+        normalized
     ):
 
         return "MEMORY"
 
     if recall_command(
-        user_input
+        normalized
     ):
 
         return "MEMORY"
 
-    # -----------------------------------------------------
-    # Explicit Python requests
-    # -----------------------------------------------------
+    if is_advanced_memory_request(
+        normalized
+    ):
+
+        return "MEMORY"
 
     if is_python_request(
-        user_input
+        normalized
     ):
 
         return "PYTHON"
 
-    # -----------------------------------------------------
-    # File requests
-    # -----------------------------------------------------
+    if is_advanced_python_request(
+        normalized
+    ):
+
+        return "PYTHON"
 
     if is_file_request(
-        user_input
+        normalized
     ):
 
         return "FILE"
 
-    # -----------------------------------------------------
-    # Date and time
-    # -----------------------------------------------------
+    if is_advanced_file_request(
+        normalized
+    ):
+
+        return "FILE"
 
     if is_datetime_request(
-        user_input
+        normalized
     ):
 
         return "DATETIME"
 
-    # -----------------------------------------------------
-    # Web requests
-    # -----------------------------------------------------
-
     if is_web_request(
-        user_input
+        normalized
     ):
 
         return "WEB"
 
-    # -----------------------------------------------------
-    # Calculator
-    # -----------------------------------------------------
+    if is_advanced_web_request(
+        normalized
+    ):
+
+        return "WEB"
 
     if extract_calculation(
-        user_input
+        normalized
+    ):
+
+        return "CALCULATOR"
+
+    if is_advanced_calculator_request(
+        normalized
     ):
 
         return "CALCULATOR"
@@ -740,138 +1415,53 @@ PYTHON
 FILE
 CHAT
 
-=========================================================
-CALCULATOR
-=========================================================
+CALCULATOR:
+Use for mathematical calculations.
 
-Choose CALCULATOR when the user wants a mathematical
-calculation or numerical answer.
+DATETIME:
+Use for current date or current time.
 
-Examples:
+WEB:
+Use when current or recent internet information
+is required or the user explicitly asks to search online.
 
-"What is 25 multiplied by 40?"
-"Calculate 15% of 200."
-"What's 88 + 7?"
-"How much is 25 times 8?"
-"Find 20 percent of 500."
+MEMORY:
+Use for saving or recalling personal information.
 
-Do NOT choose CALCULATOR simply because a question
-contains a number.
-
-=========================================================
-DATETIME
-=========================================================
-
-Choose DATETIME when the user asks for the current date,
-current day, or current time.
-
-Examples:
-
-"What time is it?"
-"What is today's date?"
-"What day is today?"
-"Tell me the current time."
-
-=========================================================
-WEB
-=========================================================
-
-Choose WEB when the user explicitly asks to search online,
-search the web, look something up, or needs current/recent
-internet information.
-
-Examples:
-
-"Search the web for the latest Python news."
-"Look up the latest AI news."
-"Search online for Python 3.15."
-"What happened recently in AI?"
-
-=========================================================
-MEMORY
-=========================================================
-
-Choose MEMORY when the user wants to save or recall
-personal information.
-
-Examples:
-
-"Remember that my favorite editor is VS Code."
-"What is my favorite editor?"
-"Tell me what you remember about my favorite editor."
-
-=========================================================
-PYTHON
-=========================================================
-
-Choose PYTHON only when the user explicitly asks to
-run or execute Python code.
-
-Examples:
-
-"Run Python to print numbers from 1 to 5."
-"Execute this Python code."
-"Use Python to calculate something."
-
-Do NOT choose PYTHON for a normal programming question.
-
-For example:
-
-"What is recursion?"
-"What is a Python function?"
-"Explain recursion."
-
-These are CHAT unless the user explicitly asks you to
+PYTHON:
+Use only when the user explicitly asks to run or
 execute Python code.
 
-=========================================================
-FILE
-=========================================================
+FILE:
+Use for creating, writing, reading, opening,
+updating, saving, displaying, or appending files.
 
-Choose FILE when the user wants to create, write, read,
-open, update, save, or append a local file.
+CHAT:
+Use for normal questions, explanations,
+definitions and conversation.
 
-Examples:
-
-"Create a file called test.txt."
-"Read phase13.txt."
-"Write Hello into notes.txt."
-"Append this text to notes.txt."
-
-=========================================================
-CHAT
-=========================================================
-
-Choose CHAT for normal questions, explanations,
-definitions, programming concepts, conversation, and
-general knowledge that does not require a tool.
-
-Examples:
-
-"What is recursion?"
-"Explain linked lists."
-"What is Python?"
-"How does binary search work?"
-
-=========================================================
-IMPORTANT RULES
-=========================================================
+IMPORTANT:
 
 1. Do not choose PYTHON merely because the question
-   mentions Python.
+mentions Python.
 
 2. Do not choose CALCULATOR merely because the question
-   contains numbers.
+contains numbers.
 
-3. Choose WEB when current or recent internet information
-   is required.
+3. Choose WEB when current information is required.
 
-4. Choose FILE when a local file operation is requested.
+4. Choose FILE for local file operations.
 
-5. Choose MEMORY for personal information being stored
-   or recalled.
+5. Choose MEMORY for personal information.
 
-6. Choose CHAT for explanations and general questions.
+6. Choose CHAT for explanations.
+
+7. If the user explicitly says "run Python",
+choose PYTHON.
+
+8. If the user explicitly asks to read, create,
+write, open, update, or append a file,
+choose FILE.
 
 Return ONLY one tool name.
 
@@ -887,9 +1477,7 @@ User:
                     "role": "system",
                     "content": (
                         "You are a precise intent classifier. "
-                        "Classify the user's request into exactly "
-                        "one available tool. Never return an "
-                        "explanation. Return only the tool name."
+                        "Return only one tool name."
                     )
                 },
                 {
@@ -906,6 +1494,7 @@ User:
         )
 
         valid_tools = {
+
             "CALCULATOR",
             "DATETIME",
             "WEB",
@@ -913,6 +1502,7 @@ User:
             "PYTHON",
             "FILE",
             "CHAT"
+
         }
 
         if result in valid_tools:
@@ -999,10 +1589,6 @@ def parse_python_request(user_input):
 
     text = user_input.strip()
 
-    # -----------------------------------------------------
-    # Explicit Python code after colon
-    # -----------------------------------------------------
-
     colon_match = re.search(
         r"^(?:run|execute|use)\s+python\s*:\s*(.*)$",
         text,
@@ -1017,10 +1603,6 @@ def parse_python_request(user_input):
 
             return code
 
-    # -----------------------------------------------------
-    # Python code after "run python"
-    # -----------------------------------------------------
-
     match = re.search(
         r"^(?:run|execute|use)\s+python\s+(.+)$",
         text,
@@ -1031,29 +1613,16 @@ def parse_python_request(user_input):
 
         content = match.group(1).strip()
 
-        python_indicators = [
-            "print(",
-            "for ",
-            "while ",
-            "if ",
-            "def ",
-            "import ",
-            "from ",
-            "=",
-            "return ",
-            "class "
-        ]
+        content = re.sub(
+            r"^to\s+",
+            "",
+            content,
+            flags=re.I
+        ).strip()
 
-        if any(
-            indicator in content
-            for indicator in python_indicators
-        ):
-
-            return content
-
-        # -------------------------------------------------
-        # Natural-language Python request
-        # -------------------------------------------------
+        content = content.rstrip(
+            ".,!?;"
+        ).strip()
 
         number_range_match = re.search(
             r"print\s+the\s+numbers?\s+from\s+(\d+)\s+to\s+(\d+)",
@@ -1087,6 +1656,28 @@ def parse_python_request(user_input):
                 f"    print(i)"
             )
 
+        python_indicators = [
+
+            "print(",
+            "for ",
+            "while ",
+            "if ",
+            "def ",
+            "import ",
+            "from ",
+            "=",
+            "return ",
+            "class "
+
+        ]
+
+        if any(
+            indicator in content
+            for indicator in python_indicators
+        ):
+
+            return content
+
     return None
 
 
@@ -1098,19 +1689,9 @@ def parse_file_request(user_input):
 
     text = user_input.strip()
 
-    # -----------------------------------------------------
-    # READ FILE
-    #
-    # Supports:
-    #
-    # read file phase13.txt
-    # read phase13.txt
-    # open file phase13.txt
-    # open phase13.txt
-    # -----------------------------------------------------
-
     read_match = re.search(
-        r"(?:read|open)\s+(?:the\s+)?(?:file\s+)?([^\s]+)",
+        r"(?:read|open|show|display|view)\s+"
+        r"(?:me\s+)?(?:the\s+)?(?:file\s+)?([^\s]+)",
         text,
         re.I
     )
@@ -1130,10 +1711,6 @@ def parse_file_request(user_input):
             "filename": filename,
             "content": None
         }
-
-    # -----------------------------------------------------
-    # APPEND TO FILE
-    # -----------------------------------------------------
 
     append_match = re.search(
         r"append\s+(.+?)\s+to\s+(?:the\s+)?file\s+([^\s]+)",
@@ -1158,10 +1735,6 @@ def parse_file_request(user_input):
             "filename": filename,
             "content": content
         }
-
-    # -----------------------------------------------------
-    # WRITE / SAVE / PUT CONTENT INTO FILE
-    # -----------------------------------------------------
 
     write_patterns = [
 
@@ -1206,10 +1779,6 @@ def parse_file_request(user_input):
                 "content": content
             }
 
-    # -----------------------------------------------------
-    # CREATE FILE WITH CONTENT
-    # -----------------------------------------------------
-
     create_with_content = re.search(
         r"create\s+(?:a\s+)?file\s+(?:called\s+)?([^\s]+)"
         r"\s+with\s+(.+)",
@@ -1234,10 +1803,6 @@ def parse_file_request(user_input):
             "filename": filename,
             "content": content
         }
-
-    # -----------------------------------------------------
-    # CREATE EMPTY FILE
-    # -----------------------------------------------------
 
     create_patterns = [
 
@@ -1284,6 +1849,24 @@ def parse_file_request(user_input):
 
 def process_request(user_input):
 
+    # =====================================================
+    # PHASE 14.1 — TASK PLANNING
+    #
+    # Only complex/multi-step requests enter the planner.
+    # Existing single-tool requests continue exactly as
+    # before.
+    # =====================================================
+
+    if is_multi_step_task(
+        user_input
+    ):
+
+        show_task_plan(
+            user_input
+        )
+
+        return
+
     print(
         "\n🤖 Agent is deciding..."
     )
@@ -1295,7 +1878,6 @@ def process_request(user_input):
     print(
         f"🔧 Selected tool: {tool}"
     )
-
 
     # =====================================================
     # CALCULATOR
@@ -1334,7 +1916,6 @@ def process_request(user_input):
                 error
             )
 
-
     # =====================================================
     # DATE & TIME
     # =====================================================
@@ -1347,7 +1928,6 @@ def process_request(user_input):
             "\n🕐 Date & Time:",
             result
         )
-
 
     # =====================================================
     # WEB
@@ -1395,7 +1975,6 @@ Web results:
                 error
             )
 
-
     # =====================================================
     # PYTHON
     # =====================================================
@@ -1434,7 +2013,6 @@ Web results:
                     "\n❌ Python execution error:",
                     error
                 )
-
 
     # =====================================================
     # MEMORY
@@ -1517,7 +2095,6 @@ Web results:
                     error
                 )
 
-
     # =====================================================
     # FILE
     # =====================================================
@@ -1544,7 +2121,6 @@ Web results:
             filename = request["filename"]
 
             content = request["content"]
-
 
             if action == "create":
 
@@ -1588,7 +2164,6 @@ Web results:
                 "\n❌ File error:",
                 error
             )
-
 
     # =====================================================
     # NORMAL CHAT
